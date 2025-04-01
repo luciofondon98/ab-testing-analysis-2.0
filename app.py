@@ -59,6 +59,9 @@ st.markdown("""
         font-size: 0.9rem;
         color: #666;
     }
+    .st-emotion-cache-10trblm.e1nzilvr1 {
+        color: white !important;
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -66,28 +69,63 @@ def parse_metrics_data(text):
     """Parse multiple metrics data from text input."""
     metrics_data = {}
     current_metric = None
+    variant_order = []  # Para mantener el orden de las variantes
     
     for line in text.strip().split('\n'):
-        line = line.strip()
-        if not line:
+        # Si la línea está vacía, continuar
+        if not line.strip():
             continue
             
-        # Check if line is a metric name
-        if not line.lower().startswith(('baseline', 'treatment')):
-            current_metric = line
-            metrics_data[current_metric] = {'baseline': None, 'treatment': None}
-            continue
+        # Dividir por tabulaciones si hay, si no, buscar el último espacio antes de los números
+        if '\t' in line:
+            parts = line.split('\t')
+        else:
+            # Encontrar la posición del primer número
+            line_parts = line.strip().split()
+            for i, part in enumerate(line_parts):
+                if part.replace('.', '').isdigit():
+                    # Unir todo lo anterior como el nombre
+                    name = ' '.join(line_parts[:i])
+                    # Y tomar los números como el resto
+                    numbers = line_parts[i:]
+                    parts = [name] + numbers
+                    break
+            else:
+                # Si no hay números, es un nombre de métrica
+                current_metric = line.strip()
+                metrics_data[current_metric] = {'baseline': None, 'treatment': None}
+                variant_order = []  # Reiniciar el orden para cada métrica
+                continue
             
-        # Parse baseline or treatment data
-        parts = line.split()
+        # Si tenemos 3 o más partes (nombre y números)
         if len(parts) >= 3:
-            group = parts[0].lower()
-            if group in ['baseline', 'treatment']:
-                metrics_data[current_metric][group] = {
-                    'n': int(parts[1]),
-                    'x': int(parts[2])
-                }
+            try:
+                variant_name = parts[0].strip()
+                n = int(parts[1].strip())  # sesiones
+                x = int(parts[2].strip())  # conversiones
+                
+                if n < x:
+                    raise ValueError(f"El número de conversiones ({x}) no puede ser mayor que el número de sesiones ({n}) en: {line}")
+                
+                # La primera línea siempre es baseline/control
+                if len(variant_order) == 0:
+                    metrics_data[current_metric]['baseline'] = {'n': n, 'x': x}
+                    variant_order.append('baseline')
+                # La segunda línea siempre es treatment
+                elif len(variant_order) == 1:
+                    metrics_data[current_metric]['treatment'] = {'n': n, 'x': x}
+                    variant_order.append('treatment')
+                
+            except ValueError as e:
+                if "El número de conversiones" in str(e):
+                    raise e
+                raise ValueError(f"Los valores deben ser números enteros en la línea: {line}")
     
+    # Validar que cada métrica tenga ambas variantes
+    for metric, data in metrics_data.items():
+        if not (data['baseline'] and data['treatment']):
+            raise ValueError(f"La métrica {metric} debe tener dos variantes (control y treatment)")
+            
     return metrics_data
 
 def calculate_ab_test(control_n, control_x, treatment_n, treatment_x):
@@ -394,6 +432,9 @@ def main():
         .stExpander > details > div {
             color: white;
         }
+        .st-emotion-cache-10trblm.e1nzilvr1 {
+            color: white !important;
+        }
         </style>
     """, unsafe_allow_html=True)
 
@@ -407,12 +448,16 @@ def main():
         
         with st.expander("Ver ejemplo de formato", expanded=False):
             st.code("""NSR Flights
-Baseline  1000 100
-Treatment 1000 120""")
+Control 1000 100
+Variant-A 1000 120
+
+Website conversion
+Baseline 2000 200
+Treatment-2 2000 220""")
         
         # Área de texto para input
         data = st.text_area(
-            "Ingresa los datos en el siguiente formato: [Nombre de la Métrica] Baseline [sesiones] [conversiones] treatment [sesiones] [conversiones]",
+            "Ingresa los datos en el siguiente formato: [Nombre de la Métrica] seguido de dos líneas con [Nombre Variante] [sesiones] [conversiones]. La primera variante será considerada como control y la segunda como treatment.",
             height=200
         )
         
