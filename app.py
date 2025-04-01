@@ -16,11 +16,33 @@ st.set_page_config(
 # Estilos CSS personalizados
 st.markdown("""
     <style>
+    .stApp {
+        background-color: #1B365D;
+    }
     .main {
         padding: 2rem;
     }
     .stTextArea {
         font-family: monospace;
+    }
+    div[data-testid="stMarkdownContainer"] {
+        color: white;
+    }
+    .stTextArea > label {
+        color: white !important;
+    }
+    button[data-testid="baseButton-secondary"] {
+        background-color: #3CCFE7;
+        color: #1B365D;
+    }
+    .stExpander {
+        border-color: #3CCFE7;
+    }
+    .stExpander > details > summary {
+        color: white;
+    }
+    .stExpander > details > div {
+        color: white;
     }
     .metric-card {
         background-color: #f0f2f6;
@@ -110,7 +132,7 @@ def create_metric_card(metric_name, data, results):
         <style>
         .metric-card {
             width: 600px;
-            height: 240px;
+            height: 220px;
             background: #4A6489;
             box-shadow: 0px 4px 4px rgba(0, 0, 0, 0.25);
             border-radius: 12px;
@@ -118,6 +140,12 @@ def create_metric_card(metric_name, data, results):
             color: white;
             position: relative;
             overflow: hidden;
+        }
+        .metric-card:hover {
+            transform: scale(1.01);
+        }
+        .metric-card:active {
+            transform: scale(0.99);
         }
         .metric-header {
             display: flex;
@@ -155,7 +183,7 @@ def create_metric_card(metric_name, data, results):
             grid-template-columns: repeat(4, 1fr);
             padding: 0 20px;
             gap: 20px;
-            height: 140px;
+            height: 120px;
         }
         .metric-section {
             display: flex;
