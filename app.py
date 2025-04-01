@@ -156,13 +156,11 @@ def create_metric_card(metric_name, data, results):
             padding: 0 20px;
             gap: 20px;
             height: 140px;
-            align-items: flex-start;
         }
         .metric-section {
             display: flex;
             flex-direction: column;
             gap: 8px;
-            margin-top: 0;
         }
         .metric-label {
             font-family: 'Clan OT', sans-serif;
@@ -235,14 +233,14 @@ def create_metric_card(metric_name, data, results):
             align-items: center;
             padding-top: 0;
             width: 100%;
-            margin-top: -4px;
+            margin-top: 0;
         }
         .p2bb-chart {
             width: 100%;
             display: flex;
             flex-direction: column;
             gap: 8px;
-            margin-top: 4px;
+            margin-top: 0px;
             align-items: center;
         }
         .p2bb-bar {
