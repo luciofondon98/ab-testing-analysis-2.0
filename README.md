@@ -1,48 +1,53 @@
-# Análisis A/B Testing con Streamlit
+# A/B Testing Analysis App
 
-Esta aplicación web permite realizar análisis de pruebas A/B, calculando métricas clave de rendimiento (KPIs) y significancia estadística.
+Esta aplicación de Streamlit permite analizar resultados de pruebas A/B, calculando métricas clave de rendimiento y significancia estadística.
+
+## Características
+
+- Análisis de múltiples métricas simultáneamente
+- Cálculo de conversión para grupos de control y tratamiento
+- Visualización de P2BB (Probability to Be Best)
+- Cálculo de mejora relativa
+- Análisis de significancia estadística (P-value)
+- Interfaz moderna y amigable
 
 ## Requisitos
 
-- Windows 10 o superior
-- Python 3.x instalado
-- Permisos de administrador para la instalación inicial
-
-## Instalación y Uso
-
-### Windows
-1. Haz clic derecho en el archivo `iniciar_app_admin.bat`
-2. Selecciona "Ejecutar como administrador"
-3. La aplicación se abrirá automáticamente en tu navegador web predeterminado
-
-### Linux/Mac
-1. Abre una terminal en la carpeta del proyecto
-2. Ejecuta:
 ```bash
-chmod +x iniciar_app.sh
-./iniciar_app.sh
+streamlit
+numpy
+scipy
+plotly
+pandas
 ```
 
-### Formato de Datos
-Ingresa los datos en el siguiente formato:
+## Uso
+
+1. Ejecuta la aplicación:
+```bash
+python -m streamlit run app.py
+```
+
+2. Ingresa los datos en el siguiente formato:
 ```
 [Nombre de la Métrica]
 Baseline [sesiones] [conversiones]
-treatment [sesiones] [conversiones]
+Treatment [sesiones] [conversiones]
 ```
 
-Por ejemplo:
+Ejemplo:
 ```
 Website conversion
 Baseline 1000 100
-treatment 1000 120
+Treatment 1000 120
 ```
 
-## Métricas Calculadas
+3. Haz clic en "Analizar" para ver los resultados
 
-- Tasa de conversión OG (Original/Baseline)
-- Tasa de conversión V1 (Variante)
-- P-value (usando chi-square test)
-- Probabilidad bayesiana (P2BB)
-- Porcentaje de mejora/deterioro
-- Visualización de probabilidades en gráfico de dona 
+## Visualización
+
+La aplicación muestra tarjetas métricas con:
+- Tasas de conversión para OG y V1
+- Gráfico de P2BB
+- Porcentaje de mejora
+- P-value del test 
