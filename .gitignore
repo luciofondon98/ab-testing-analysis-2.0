@@ -22,8 +22,9 @@ wheels/
 
 # Virtual Environment
 venv/
-env/
 ENV/
+env/
+.env
 
 # IDE
 .idea/
@@ -31,6 +32,9 @@ ENV/
 *.swp
 *.swo
 
-# OS
+# Streamlit
+.streamlit/
+
+# System
 .DS_Store
 Thumbs.db 
