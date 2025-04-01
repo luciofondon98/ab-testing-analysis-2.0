@@ -3,6 +3,8 @@ import numpy as np
 from scipy import stats
 import plotly.graph_objects as go
 from scipy.stats import beta
+from plotly.subplots import make_subplots
+import pandas as pd
 
 # Configuración de la página
 st.set_page_config(
@@ -38,103 +40,104 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-def parse_input(text):
-    """Parsea el texto de entrada y extrae los datos de la métrica."""
-    lines = text.strip().split('\n')
-    if len(lines) != 3:
-        raise ValueError("El formato debe tener exactamente 3 líneas")
+def parse_metrics_data(text):
+    """Parse multiple metrics data from text input."""
+    metrics_data = {}
+    current_metric = None
     
-    metric_name = lines[0].strip()
-    baseline = lines[1].strip().split()
-    treatment = lines[2].strip().split()
+    for line in text.strip().split('\n'):
+        line = line.strip()
+        if not line:
+            continue
+            
+        # Check if line is a metric name
+        if not line.lower().startswith(('baseline', 'treatment')):
+            current_metric = line
+            metrics_data[current_metric] = {'baseline': None, 'treatment': None}
+            continue
+            
+        # Parse baseline or treatment data
+        parts = line.split()
+        if len(parts) >= 3:
+            group = parts[0].lower()
+            if group in ['baseline', 'treatment']:
+                metrics_data[current_metric][group] = {
+                    'n': int(parts[1]),
+                    'x': int(parts[2])
+                }
     
-    if len(baseline) != 3 or len(treatment) != 3:
-        raise ValueError("Cada línea de datos debe tener 3 elementos")
+    return metrics_data
+
+def calculate_ab_test(control_n, control_x, treatment_n, treatment_x):
+    """Calculate A/B test statistics."""
+    control_p = control_x / control_n
+    treatment_p = treatment_x / treatment_n
     
-    if baseline[0].lower() != 'baseline' or treatment[0].lower() != 'treatment':
-        raise ValueError("Las líneas deben comenzar con 'Baseline' y 'treatment'")
+    # Calculate standard error
+    se = np.sqrt(
+        (control_p * (1 - control_p) / control_n) +
+        (treatment_p * (1 - treatment_p) / treatment_n)
+    )
     
-    try:
-        baseline_sessions = int(baseline[1])
-        baseline_conversions = int(baseline[2])
-        treatment_sessions = int(treatment[1])
-        treatment_conversions = int(treatment[2])
-    except ValueError:
-        raise ValueError("Los valores numéricos deben ser enteros")
+    # Calculate z-score
+    z_score = (treatment_p - control_p) / se
+    
+    # Calculate p-value (two-tailed)
+    p_value = 2 * (1 - stats.norm.cdf(abs(z_score)))
+    
+    # Calculate relative lift
+    relative_lift = ((treatment_p - control_p) / control_p) * 100
     
     return {
-        'metric_name': metric_name,
-        'baseline': {'sessions': baseline_sessions, 'conversions': baseline_conversions},
-        'treatment': {'sessions': treatment_sessions, 'conversions': treatment_conversions}
+        'control_p': control_p,
+        'treatment_p': treatment_p,
+        'se': se,
+        'z_score': z_score,
+        'p_value': p_value,
+        'relative_lift': relative_lift
     }
 
-def calculate_conversion_rates(data):
-    """Calcula las tasas de conversión para ambos grupos."""
-    baseline_rate = (data['baseline']['conversions'] / data['baseline']['sessions']) * 100
-    treatment_rate = (data['treatment']['conversions'] / data['treatment']['sessions']) * 100
-    improvement = ((treatment_rate - baseline_rate) / baseline_rate) * 100
+def create_metric_plot(metric_name, control_data, treatment_data, results):
+    """Create a plot for a single metric."""
+    fig = go.Figure()
     
-    return {
-        'baseline_rate': baseline_rate,
-        'treatment_rate': treatment_rate,
-        'improvement': improvement
-    }
-
-def calculate_statistical_significance(data):
-    """Calcula la significancia estadística usando chi-square test."""
-    contingency_table = np.array([
-        [data['baseline']['conversions'], data['baseline']['sessions'] - data['baseline']['conversions']],
-        [data['treatment']['conversions'], data['treatment']['sessions'] - data['treatment']['conversions']]
-    ])
+    # Add bars
+    fig.add_trace(go.Bar(
+        name='Baseline',
+        x=['Baseline'],
+        y=[control_data['x']],
+        text=[f"{control_data['x']}/{control_data['n']}"],
+        textposition='auto',
+        marker_color='#1f77b4'
+    ))
     
-    chi2, p_value = stats.chi2_contingency(contingency_table)[:2]
-    return p_value
-
-def calculate_bayesian_probability(data):
-    """Calcula la probabilidad bayesiana usando distribución beta."""
-    # Parámetros de la distribución beta para cada grupo
-    baseline_a = data['baseline']['conversions'] + 1
-    baseline_b = data['baseline']['sessions'] - data['baseline']['conversions'] + 1
-    treatment_a = data['treatment']['conversions'] + 1
-    treatment_b = data['treatment']['sessions'] - data['treatment']['conversions'] + 1
+    fig.add_trace(go.Bar(
+        name='Treatment',
+        x=['Treatment'],
+        y=[treatment_data['x']],
+        text=[f"{treatment_data['x']}/{treatment_data['n']}"],
+        textposition='auto',
+        marker_color='#ff7f0e'
+    ))
     
-    # Simulación Monte Carlo
-    n_samples = 10000
-    baseline_samples = beta.rvs(baseline_a, baseline_b, size=n_samples)
-    treatment_samples = beta.rvs(treatment_a, treatment_b, size=n_samples)
-    
-    # Probabilidad de que treatment sea mejor que baseline
-    p2bb = np.mean(treatment_samples > baseline_samples)
-    
-    return p2bb
-
-def create_donut_chart(p2bb):
-    """Crea un gráfico de dona con las probabilidades P2BB."""
-    fig = go.Figure(data=[go.Pie(
-        labels=['Treatment', 'Baseline'],
-        values=[p2bb * 100, (1 - p2bb) * 100],
-        hole=.7,
-        marker_colors=['#00CC96', '#EF553B']
-    )])
-    
+    # Update layout
     fig.update_layout(
-        width=400,
-        height=400,
+        title=f"{metric_name} - A/B Test Results",
+        yaxis_title='Count',
         showlegend=True,
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=1.02,
-            xanchor="right",
-            x=1
-        ),
-        annotations=[dict(
-            text=f'{p2bb*100:.1f}%',
-            x=0.5,
-            y=0.5,
-            font_size=20,
-            showarrow=False
-        )]
+        height=400
+    )
+    
+    # Add significance annotation
+    significance = "Significant" if results['p_value'] < 0.05 else "Not Significant"
+    fig.add_annotation(
+        text=f"p-value: {results['p_value']:.4f}<br>Lift: {results['relative_lift']:.2f}%<br>{significance}",
+        xref='paper',
+        yref='paper',
+        x=0.02,
+        y=0.98,
+        showarrow=False,
+        font=dict(size=12)
     )
     
     return fig
@@ -156,79 +159,70 @@ treatment 1000 120
         """)
     
     # Área de texto para entrada de datos
-    input_text = st.text_area(
+    data = st.text_area(
         "Ingresa los datos en el siguiente formato:\n[Nombre de la Métrica]\nBaseline [sesiones] [conversiones]\ntreatment [sesiones] [conversiones]",
-        height=150
+        height=200
     )
     
     if st.button("Analizar", type="primary"):
-        try:
-            # Parsear y validar datos
-            data = parse_input(input_text)
-            
-            # Calcular métricas
-            conversion_rates = calculate_conversion_rates(data)
-            p_value = calculate_statistical_significance(data)
-            p2bb = calculate_bayesian_probability(data)
-            
-            # Mostrar resultados
-            st.subheader(f"📈 Resultados para: {data['metric_name']}")
-            
-            # Métricas en tarjetas
-            col1, col2, col3, col4 = st.columns(4)
-            
-            with col1:
-                st.markdown(f"""
-                    <div class="metric-card">
-                        <div class="metric-label">Tasa de conversión OG</div>
-                        <div class="metric-value">{conversion_rates['baseline_rate']:.2f}%</div>
-                    </div>
-                """, unsafe_allow_html=True)
-            
-            with col2:
-                st.markdown(f"""
-                    <div class="metric-card">
-                        <div class="metric-label">Tasa de conversión V1</div>
-                        <div class="metric-value">{conversion_rates['treatment_rate']:.2f}%</div>
-                    </div>
-                """, unsafe_allow_html=True)
-            
-            with col3:
-                st.markdown(f"""
-                    <div class="metric-card">
-                        <div class="metric-label">P-value</div>
-                        <div class="metric-value">{p_value:.4f}</div>
-                    </div>
-                """, unsafe_allow_html=True)
-            
-            with col4:
-                st.markdown(f"""
-                    <div class="metric-card">
-                        <div class="metric-label">Mejora/Deterioro</div>
-                        <div class="metric-value">{conversion_rates['improvement']:.2f}%</div>
-                    </div>
-                """, unsafe_allow_html=True)
-            
-            # Gráfico de dona
-            st.subheader("🎯 Probabilidad de Mejora")
-            st.plotly_chart(create_donut_chart(p2bb), use_container_width=True)
-            
-            # Interpretación de resultados
-            st.subheader("📝 Interpretación")
-            if p_value < 0.05:
-                st.success("✅ La diferencia es estadísticamente significativa (p < 0.05)")
-            else:
-                st.warning("⚠️ La diferencia no es estadísticamente significativa (p ≥ 0.05)")
-            
-            if conversion_rates['improvement'] > 0:
-                st.success(f"✅ La variante V1 muestra una mejora del {conversion_rates['improvement']:.2f}%")
-            else:
-                st.warning(f"⚠️ La variante V1 muestra un deterioro del {abs(conversion_rates['improvement']):.2f}%")
-            
-        except ValueError as e:
-            st.error(f"❌ Error en el formato de entrada: {str(e)}")
-        except Exception as e:
-            st.error(f"❌ Error al procesar los datos: {str(e)}")
+        if data:
+            try:
+                # Parsear y validar datos
+                metrics_data = parse_metrics_data(data)
+                
+                if not metrics_data:
+                    st.error("No valid metrics data found. Please check the format.")
+                    return
+                
+                # Crear pestañas para cada métrica
+                tabs = st.tabs(list(metrics_data.keys()))
+                
+                # Procesar cada métrica
+                for tab, (metric_name, data) in zip(tabs, metrics_data.items()):
+                    with tab:
+                        if data['baseline'] and data['treatment']:
+                            # Calcular resultados
+                            results = calculate_ab_test(
+                                data['baseline']['n'],
+                                data['baseline']['x'],
+                                data['treatment']['n'],
+                                data['treatment']['x']
+                            )
+                            
+                            # Crear y mostrar gráfico
+                            fig = create_metric_plot(metric_name, data['baseline'], data['treatment'], results)
+                            st.plotly_chart(fig, use_container_width=True)
+                            
+                            # Mostrar resultados detallados
+                            st.markdown("### Resultados Detallados")
+                            col1, col2, col3 = st.columns(3)
+                            
+                            with col1:
+                                st.metric(
+                                    "Tasa de Conversión OG",
+                                    f"{(data['baseline']['x']/data['baseline']['n'])*100:.2f}%",
+                                    f"{data['baseline']['x']}/{data['baseline']['n']}"
+                                )
+                            
+                            with col2:
+                                st.metric(
+                                    "Tasa de Conversión V1",
+                                    f"{(data['treatment']['x']/data['treatment']['n'])*100:.2f}%",
+                                    f"{data['treatment']['x']}/{data['treatment']['n']}"
+                                )
+                            
+                            with col3:
+                                st.metric(
+                                    "Lift Relativo",
+                                    f"{results['relative_lift']:.2f}%",
+                                    f"p-value: {results['p_value']:.4f}"
+                                )
+                        else:
+                            st.error(f"Missing data for {metric_name}. Please check the format.")
+            except Exception as e:
+                st.error(f"Error processing data: {str(e)}")
+        else:
+            st.warning("Please enter some data to analyze.")
 
 if __name__ == "__main__":
     main() 
