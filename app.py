@@ -364,56 +364,78 @@ def create_metric_card(metric_name, data, results):
     """, unsafe_allow_html=True)
 
 def main():
-    # Título y descripción
-    st.title("📊 Análisis A/B Testing")
     st.markdown("""
-        Esta aplicación te permite analizar los resultados de pruebas A/B, calculando métricas clave 
-        de rendimiento y significancia estadística.
-    """)
-    
-    # Ejemplo de formato
-    with st.expander("Ver ejemplo de formato"):
-        st.code("""
-Website conversion
-Baseline 1000 100
-treatment 1000 120
-        """)
-    
-    # Área de texto para entrada de datos
-    data = st.text_area(
-        "Ingresa los datos en el siguiente formato:\n[Nombre de la Métrica]\nBaseline [sesiones] [conversiones]\ntreatment [sesiones] [conversiones]",
-        height=200
-    )
-    
-    if st.button("Analizar", type="primary"):
-        if data:
-            try:
-                # Parsear y validar datos
-                metrics_data = parse_metrics_data(data)
-                
-                if not metrics_data:
-                    st.error("No valid metrics data found. Please check the format.")
-                    return
-                
-                # Procesar cada métrica
-                for metric_name, data in metrics_data.items():
-                    if data['baseline'] and data['treatment']:
-                        # Calcular resultados
-                        results = calculate_ab_test(
-                            data['baseline']['n'],
-                            data['baseline']['x'],
-                            data['treatment']['n'],
-                            data['treatment']['x']
-                        )
-                        
-                        # Crear y mostrar gráfico
-                        create_metric_card(metric_name, data, results)
-                    else:
-                        st.error(f"Missing data for {metric_name}. Please check the format.")
-            except Exception as e:
-                st.error(f"Error processing data: {str(e)}")
-        else:
-            st.warning("Please enter some data to analyze.")
+        <style>
+        .stApp {
+            background-color: #1B365D;
+        }
+        .main {
+            padding: 2rem;
+        }
+        .stTextArea {
+            font-family: monospace;
+        }
+        div[data-testid="stMarkdownContainer"] {
+            color: white;
+        }
+        .stTextArea > label {
+            color: white !important;
+        }
+        button[data-testid="baseButton-secondary"] {
+            background-color: #3CCFE7;
+            color: #1B365D;
+        }
+        .stExpander {
+            border-color: #3CCFE7;
+        }
+        .stExpander > details > summary {
+            color: white;
+        }
+        .stExpander > details > div {
+            color: white;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+
+    # Crear dos columnas principales
+    col_input, col_output = st.columns([1, 1])
+
+    # Columna de input (izquierda)
+    with col_input:
+        st.title("📊 Análisis A/B Testing")
+        st.write("Esta aplicación te permite analizar los resultados de pruebas A/B, calculando métricas clave de rendimiento y significancia estadística.")
+        
+        with st.expander("Ver ejemplo de formato", expanded=False):
+            st.code("""NSR Flights
+Baseline  1000 100
+Treatment 1000 120""")
+        
+        # Área de texto para input
+        data = st.text_area(
+            "Ingresa los datos en el siguiente formato: [Nombre de la Métrica] Baseline [sesiones] [conversiones] treatment [sesiones] [conversiones]",
+            height=200
+        )
+        
+        if st.button("Analizar", type="primary"):
+            if data:
+                try:
+                    metrics = parse_metrics_data(data)
+                    st.session_state.metrics = metrics
+                    st.session_state.show_results = True
+                except Exception as e:
+                    st.error(f"Error al procesar los datos: {str(e)}")
+            else:
+                st.warning("Por favor, ingresa algunos datos para analizar.")
+
+    # Columna de output (derecha)
+    with col_output:
+        if 'show_results' in st.session_state and st.session_state.show_results:
+            metrics = st.session_state.metrics
+            for metric_name, data in metrics.items():
+                results = calculate_ab_test(data['baseline']['n'], data['baseline']['x'], data['treatment']['n'], data['treatment']['x'])
+                create_metric_card(metric_name, data, results)
 
 if __name__ == "__main__":
+    if 'show_results' not in st.session_state:
+        st.session_state.show_results = False
     main() 
