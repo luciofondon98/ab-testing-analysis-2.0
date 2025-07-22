@@ -866,42 +866,25 @@ def convert_metrics_to_text(metrics):
 def create_share_url_section(metrics):
     """Create section for sharing URL with current data."""
     if metrics:
-        st.markdown("### 🔗 Compartir Análisis")
+        st.markdown("#### 🔗 Compartir")
         
         # Generar URL compartible
         share_url = generate_share_url(metrics)
         
         if share_url:
-            st.markdown("""
-            <div class="share-url-box">
-                <h4 style="color: white; margin-top: 0;">URL para Compartir</h4>
-                <p style="color: #E0E0E0; margin-bottom: 15px;">
-                    Copia esta URL para compartir tu análisis con otros. Los datos se cargarán automáticamente.
-                </p>
-            """, unsafe_allow_html=True)
-            
-            # Mostrar URL en un input copiable
+            # Mostrar URL en un input copiable más compacto
             st.text_input(
-                "URL compartible:",
+                "URL:",
                 value=share_url,
-                help="Copia esta URL para compartir tu análisis"
+                help="Selecciona todo el texto y copia con Ctrl+C para compartir",
+                label_visibility="collapsed"
             )
             
-            # Botón para copiar al portapapeles (JavaScript)
-            st.markdown(f"""
-                <button onclick="navigator.clipboard.writeText('{share_url}').then(function() {{
-                    alert('URL copiada al portapapeles!');
-                }}, function(err) {{
-                    console.error('Error al copiar: ', err);
-                }});" 
-                style="background-color: #3CCFE7; color: #1B365D; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: bold;">
-                    📋 Copiar URL
-                </button>
-            """, unsafe_allow_html=True)
+            # Texto de ayuda más pequeño
+            st.caption("💡 Selecciona el texto de arriba y copia con Ctrl+C")
             
-            st.markdown("</div>", unsafe_allow_html=True)
         else:
-            st.warning("No se pudo generar la URL para compartir. Los datos pueden ser demasiado grandes.")
+            st.warning("Error generando URL")
 
 def load_data_from_url():
     """Load data from URL parameter if present."""
@@ -968,13 +951,16 @@ def main():
     if loaded_text:
         st.success("✅ Datos cargados desde URL compartida y analizados automáticamente!")
 
-    # Crear dos columnas principales
-    col_input, col_output = st.columns([1, 1])
+    # Header section - título y descripción
+    st.title("📊 Análisis A/B/N Testing")
+    st.write("Esta aplicación te permite analizar los resultados de pruebas A/B/N con múltiples variantes, calculando métricas clave de rendimiento y significancia estadística.")
 
-    # Columna de input (izquierda)
-    with col_input:
-        st.title("📊 Análisis A/B/N Testing")
-        st.write("Esta aplicación te permite analizar los resultados de pruebas A/B/N con múltiples variantes, calculando métricas clave de rendimiento y significancia estadística.")
+    # Crear sección de input en dos columnas  
+    col_input_left, col_input_right = st.columns([3, 1])
+
+    # Columna de input de datos (izquierda)
+    with col_input_left:
+        st.subheader("📝 Datos de Entrada")
         
         with st.expander("Ver ejemplo de formato", expanded=False):
             st.code("""NSR Flights
@@ -992,9 +978,18 @@ Treatment-3 2000 250""")
         # Área de texto para input (usar datos cargados si existen)
         default_data = loaded_text if loaded_text else ""
         data = st.text_area(
-            "Ingresa los datos en el siguiente formato: [Nombre de la Métrica] seguido de las líneas con [Nombre Variante] [sesiones] [conversiones]. La primera variante será considerada como control.",
-            height=250,
-            value=default_data
+            "Formato: [Nombre Métrica] → [Nombre Variante] [sesiones] [conversiones]",
+            height=300,
+            value=default_data,
+            placeholder="""NSR Flights
+Control 1000 100
+Variant-A 1000 120
+Variant-B 1000 90
+Variant-C 1000 140
+
+Website conversion
+Baseline 2000 200
+Treatment-1 2000 220"""
         )
         
         # Cambiar texto del botón si hay datos cargados desde URL
@@ -1012,51 +1007,70 @@ Treatment-3 2000 250""")
             else:
                 st.warning("Por favor, ingresa algunos datos para analizar.")
 
-    # Columna de output (derecha)
-    with col_output:
-        # Auto-cargar y auto-analizar si hay datos de URL
-        if loaded_metrics:
-            st.session_state.metrics = loaded_metrics
-            st.session_state.show_results = True
-            st.session_state.auto_loaded = True
-
+    # Columna derecha - Compartir (solo si hay resultados)
+    with col_input_right:
         if 'show_results' in st.session_state and st.session_state.show_results:
             metrics = st.session_state.metrics
-            
             # Sección para compartir URL
             create_share_url_section(metrics)
-            
-            for metric_name, data in metrics.items():
-                # Verificar si tiene la estructura de variantes nueva o la legacy
-                if 'variants' in data and len(data['variants']) > 0:
-                    variants = data['variants']
+
+    # Auto-cargar y auto-analizar si hay datos de URL
+    if loaded_metrics:
+        st.session_state.metrics = loaded_metrics
+        st.session_state.show_results = True
+        st.session_state.auto_loaded = True
+
+    # Sección de resultados - ancho completo
+    if 'show_results' in st.session_state and st.session_state.show_results:
+        st.markdown("---")
+        st.header("📊 Resultados del Análisis")
+        
+        metrics = st.session_state.metrics
+        
+        # Procesar cada métrica
+        for metric_name, data in metrics.items():
+            # Verificar si tiene la estructura de variantes nueva o la legacy
+            if 'variants' in data and len(data['variants']) > 0:
+                variants = data['variants']
+                
+                # Contenedor para cada métrica
+                st.subheader(f"🎯 {metric_name}")
+                
+                # Si solo hay 2 variantes, usar el formato original (más compacto)
+                if len(variants) == 2 and 'baseline' in data and 'treatment' in data:
+                    results = calculate_ab_test(
+                        data['baseline']['n'], data['baseline']['x'],
+                        data['treatment']['n'], data['treatment']['x']
+                    )
                     
-                    # Si solo hay 2 variantes, usar el formato original
-                    if len(variants) == 2 and 'baseline' in data and 'treatment' in data:
-                        results = calculate_ab_test(
-                            data['baseline']['n'], data['baseline']['x'],
-                            data['treatment']['n'], data['treatment']['x']
-                        )
+                    # Mostrar en dos columnas: card + gráfico
+                    col_card, col_chart = st.columns([1, 1])
+                    with col_card:
                         create_metric_card(metric_name, data, results)
-                    else:
-                        # Análisis multivariante
-                        chi_square_result = calculate_chi_square_test(variants)
-                        
-                        # Crear tarjeta de resumen
-                        create_multivariant_summary_card(metric_name, variants, chi_square_result)
-                        
-                        # Matriz de comparaciones (arriba para mejor visibilidad)
+                    
+                else:
+                    # Análisis multivariante - Layout mejorado
+                    chi_square_result = calculate_chi_square_test(variants)
+                    
+                    # Resumen general en la parte superior
+                    create_multivariant_summary_card(metric_name, variants, chi_square_result)
+                    
+                    # Dos columnas para matriz y gráfico
+                    col_matrix, col_chart = st.columns([1, 1])
+                    
+                    with col_matrix:
                         create_comparison_matrix(metric_name, variants)
-                        
-                        # Crear visualización
+                    
+                    with col_chart:
                         fig = create_visualization(metric_name, variants)
                         st.plotly_chart(fig, use_container_width=True)
-                        
-                        # Comparaciones de todas las variantes (solo secciones detalladas)
+                    
+                    # Comparaciones detalladas en ancho completo (colapsadas por defecto)
+                    with st.expander(f"Ver comparaciones detalladas - {metric_name}", expanded=False):
                         all_comparisons = calculate_all_pairwise_comparisons(variants)
                         create_all_comparisons_section(metric_name, all_comparisons)
-                
-                st.markdown("---")
+            
+            st.markdown("---")
 
 if __name__ == "__main__":
     if 'show_results' not in st.session_state:
