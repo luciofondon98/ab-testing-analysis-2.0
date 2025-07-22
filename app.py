@@ -143,18 +143,24 @@ def generate_share_url(data):
     """Generate shareable URL with data."""
     encoded = encode_data_to_url(data)
     if encoded:
-        base_url = st.get_option("browser.serverAddress") or "localhost"
+        # Usar una estrategia más simple y robusta
+        base_url = st.get_option("browser.serverAddress")
         port = st.get_option("server.port") or 8501
         
-        # Detectar si estamos en desarrollo local o en producción
-        if base_url == "localhost" or "127.0.0.1" in base_url:
-            # Desarrollo local - usar HTTP
-            protocol = "http"
-            share_url = f"{protocol}://{base_url}:{port}/?data={encoded}"
+        # Si serverAddress es None o localhost, estamos en desarrollo local
+        if not base_url or base_url == "localhost" or "127.0.0.1" in str(base_url):
+            share_url = f"http://localhost:{port}/?data={encoded}"
         else:
-            # Producción (Streamlit Cloud) - usar HTTPS sin puerto
-            protocol = "https"
-            share_url = f"{protocol}://{base_url}/?data={encoded}"
+            # En producción, usar HTTPS y el serverAddress tal como viene
+            # Limpiar la URL base si ya tiene protocolo
+            if base_url.startswith("http://") or base_url.startswith("https://"):
+                clean_base = base_url
+            else:
+                clean_base = f"https://{base_url}"
+            
+            # Remover trailing slash si existe
+            clean_base = clean_base.rstrip('/')
+            share_url = f"{clean_base}/?data={encoded}"
         
         return share_url
     return None
@@ -882,6 +888,14 @@ def create_share_url_section(metrics):
             
             # Texto de ayuda más pequeño
             st.caption("💡 Selecciona el texto de arriba y copia con Ctrl+C")
+            
+            # Debug info (opcional - comentar en producción)
+            debug_info = f"""
+            Debug: serverAddress='{st.get_option("browser.serverAddress")}', 
+            port={st.get_option("server.port")}
+            """
+            if st.checkbox("🐛 Debug info", value=False):
+                st.code(debug_info)
             
         else:
             st.warning("Error generando URL")
