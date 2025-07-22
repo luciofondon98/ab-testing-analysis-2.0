@@ -139,28 +139,77 @@ def decode_data_from_url(encoded_data):
     except Exception:
         return None
 
+def get_browser_url():
+    """Get current URL from browser using JavaScript."""
+    import streamlit.components.v1 as components
+    
+    # Create a hidden component that gets the current URL
+    browser_url = components.html(
+        """
+        <script>
+        // Get the current URL and send it to Streamlit
+        const currentUrl = window.location.href.split('?')[0];
+        window.parent.postMessage({
+            type: 'streamlit:browserUrl',
+            url: currentUrl
+        }, '*');
+        </script>
+        <div style="display: none;">Getting URL...</div>
+        """,
+        height=0
+    )
+    return None  # This approach needs session state to work
+
 def generate_share_url(data):
     """Generate shareable URL with data."""
     encoded = encode_data_to_url(data)
     if encoded:
-        # Usar una estrategia más simple y robusta
-        base_url = st.get_option("browser.serverAddress")
+        # Strategy: Use a simple but effective detection
+        server_address = st.get_option("browser.serverAddress")
         port = st.get_option("server.port") or 8501
         
-        # Si serverAddress es None o localhost, estamos en desarrollo local
-        if not base_url or base_url == "localhost" or "127.0.0.1" in str(base_url):
-            share_url = f"http://localhost:{port}/?data={encoded}"
-        else:
-            # En producción, usar HTTPS y el serverAddress tal como viene
-            # Limpiar la URL base si ya tiene protocolo
-            if base_url.startswith("http://") or base_url.startswith("https://"):
-                clean_base = base_url
-            else:
-                clean_base = f"https://{base_url}"
+        # If serverAddress is localhost but we're actually on Streamlit Cloud,
+        # we need to detect this differently
+        if server_address == "localhost":
+            # Try to detect if we're on Streamlit Cloud by checking environment
+            import os
             
-            # Remover trailing slash si existe
-            clean_base = clean_base.rstrip('/')
-            share_url = f"{clean_base}/?data={encoded}"
+            # Check various environment variables that might indicate Streamlit Cloud
+            env_vars = [
+                'STREAMLIT_SERVER_HEADLESS',
+                'STREAMLIT_SHARING_MODE', 
+                'HOSTNAME',
+                'DYNO',  # Heroku
+                'RENDER_SERVICE_NAME',  # Render
+            ]
+            
+            is_cloud = any(
+                var in os.environ and 'streamlit' in str(os.environ.get(var, '')).lower()
+                for var in env_vars
+            )
+            
+            # Additional check: if we have specific cloud indicators
+            if not is_cloud:
+                is_cloud = (
+                    os.environ.get('STREAMLIT_SERVER_HEADLESS') == 'true' or
+                    'RENDER' in os.environ or
+                    'DYNO' in os.environ
+                )
+            
+            if is_cloud:
+                # We're on a cloud platform but serverAddress is still localhost
+                # Create a placeholder that the user can easily replace
+                share_url = f"https://YOUR-STREAMLIT-APP-URL.streamlit.app/?data={encoded}"
+            else:
+                # Actually localhost
+                share_url = f"http://localhost:{port}/?data={encoded}"
+        else:
+            # serverAddress is not localhost, use it
+            if server_address.startswith("http"):
+                base_url = server_address.rstrip('/')
+            else:
+                base_url = f"https://{server_address}"
+            share_url = f"{base_url}/?data={encoded}"
         
         return share_url
     return None
@@ -878,21 +927,44 @@ def create_share_url_section(metrics):
         share_url = generate_share_url(metrics)
         
         if share_url:
-            # Mostrar URL en un input copiable más compacto
-            st.text_input(
-                "URL:",
-                value=share_url,
-                help="Selecciona todo el texto y copia con Ctrl+C para compartir",
-                label_visibility="collapsed"
-            )
+            # Si la URL contiene el placeholder, mostrar ayuda especial
+            if "YOUR-STREAMLIT-APP-URL" in share_url:
+                st.warning("⚠️ Reemplaza YOUR-STREAMLIT-APP-URL con tu URL real de Streamlit")
+                
+                # Mostrar campo editable para que el usuario pueda corregir
+                corrected_url = st.text_input(
+                    "Corrige la URL:",
+                    value=share_url,
+                    help="Reemplaza YOUR-STREAMLIT-APP-URL con tu URL real (ej: ab-testing-analysis-20-excagd7wmh3lhplwa4hqvb.streamlit.app)"
+                )
+                
+                if corrected_url != share_url and "YOUR-STREAMLIT-APP-URL" not in corrected_url:
+                    st.success("✅ URL corregida!")
+            else:
+                # Mostrar URL en un input copiable más compacto
+                st.text_input(
+                    "URL:",
+                    value=share_url,
+                    help="Selecciona todo el texto y copia con Ctrl+C para compartir",
+                    label_visibility="collapsed"
+                )
             
             # Texto de ayuda más pequeño
             st.caption("💡 Selecciona el texto de arriba y copia con Ctrl+C")
             
             # Debug info (opcional - comentar en producción)
+            import os
+            env_debug = {}
+            interesting_vars = ['HOSTNAME', 'STREAMLIT_SERVER_HEADLESS', 'RENDER_SERVICE_NAME', 'DYNO', 'STREAMLIT_SHARING_MODE']
+            for var in interesting_vars:
+                if var in os.environ:
+                    env_debug[var] = os.environ[var]
+            
             debug_info = f"""
-            Debug: serverAddress='{st.get_option("browser.serverAddress")}', 
-            port={st.get_option("server.port")}
+            Debug: 
+            - serverAddress='{st.get_option("browser.serverAddress")}' 
+            - port={st.get_option("server.port")}
+            - Environment vars: {env_debug}
             """
             if st.checkbox("🐛 Debug info", value=False):
                 st.code(debug_info)
