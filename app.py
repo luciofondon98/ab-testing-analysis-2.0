@@ -6,6 +6,9 @@ from scipy.stats import beta, chi2_contingency
 from plotly.subplots import make_subplots
 import pandas as pd
 from itertools import combinations
+import base64
+import json
+import urllib.parse
 
 # Configuración de la página
 st.set_page_config(
@@ -99,8 +102,62 @@ st.markdown("""
         min-width: 80px;
         text-align: center;
     }
+    .share-url-box {
+        background: #4A6489;
+        border-radius: 8px;
+        padding: 15px;
+        margin: 20px 0;
+        border: 2px solid #3CCFE7;
+    }
+    .share-url-input {
+        width: 100%;
+        padding: 10px;
+        border-radius: 6px;
+        border: 1px solid #3CCFE7;
+        background: #1B365D;
+        color: white;
+        font-family: monospace;
+        font-size: 0.9em;
+    }
     </style>
 """, unsafe_allow_html=True)
+
+def encode_data_to_url(data):
+    """Encode data to URL-safe base64 string."""
+    try:
+        json_str = json.dumps(data)
+        encoded = base64.urlsafe_b64encode(json_str.encode()).decode()
+        return encoded
+    except Exception:
+        return None
+
+def decode_data_from_url(encoded_data):
+    """Decode data from URL-safe base64 string."""
+    try:
+        decoded = base64.urlsafe_b64decode(encoded_data.encode()).decode()
+        return json.loads(decoded)
+    except Exception:
+        return None
+
+def generate_share_url(data):
+    """Generate shareable URL with data."""
+    encoded = encode_data_to_url(data)
+    if encoded:
+        base_url = st.get_option("browser.serverAddress") or "localhost"
+        port = st.get_option("server.port") or 8501
+        
+        # Detectar si estamos en desarrollo local o en producción
+        if base_url == "localhost" or "127.0.0.1" in base_url:
+            # Desarrollo local - usar HTTP
+            protocol = "http"
+            share_url = f"{protocol}://{base_url}:{port}/?data={encoded}"
+        else:
+            # Producción (Streamlit Cloud) - usar HTTPS sin puerto
+            protocol = "https"
+            share_url = f"{protocol}://{base_url}/?data={encoded}"
+        
+        return share_url
+    return None
 
 def parse_metrics_data(text):
     """Parse multiple metrics data from text input supporting both legacy and N variants."""
@@ -560,141 +617,6 @@ def create_multivariant_summary_card(metric_name, variants, chi_square_result):
     
     st.markdown("</div></div>", unsafe_allow_html=True)
 
-def create_pairwise_comparison_cards(metric_name, comparisons):
-    """Create cards for pairwise comparisons."""
-    st.markdown(f"### Comparaciones vs Control ({comparisons[0]['variant_a_name']})")
-    
-    for comparison in comparisons:
-        st.markdown(f"""
-            <div class="multivariant-card" style="padding: 15px;">
-                <h4>{comparison['variant_a_name']} vs {comparison['variant_b_name']}</h4>
-                <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-top: 15px;">
-                    <div>
-                        <div style="font-size: 0.9rem; opacity: 0.8;">Conversión {comparison['variant_a_name']}</div>
-                        <div class="metric-box">{comparison['variant_a_p']*100:.2f}%</div>
-                    </div>
-                    <div>
-                        <div style="font-size: 0.9rem; opacity: 0.8;">Conversión {comparison['variant_b_name']}</div>
-                        <div class="metric-box">{comparison['variant_b_p']*100:.2f}%</div>
-                    </div>
-                    <div>
-                        <div style="font-size: 0.9rem; opacity: 0.8;">Lift</div>
-                        <div class="metric-box" style="color: {'#69BE28' if comparison['relative_lift'] > 0 else '#FF6B6B'}">
-                            {'+' if comparison['relative_lift'] > 0 else ''}{comparison['relative_lift']:.2f}%
-                        </div>
-                    </div>
-                    <div>
-                        <div style="font-size: 0.9rem; opacity: 0.8;">P2BB</div>
-                        <div class="metric-box">{comparison['p2bb']*100:.1f}%</div>
-                    </div>
-                </div>
-                <div style="margin-top: 15px;">
-                    <strong>P-value:</strong> {comparison['p_value']:.4f} 
-                    <span style="color: {'#69BE28' if comparison['significant'] else '#FF6B6B'}">
-                        ({'Significativo' if comparison['significant'] else 'No significativo'})
-                    </span>
-                </div>
-            </div>
-        """, unsafe_allow_html=True)
-
-def create_visualization(metric_name, variants):
-    """Create visualization for multivariant test."""
-    # Crear gráfico de barras con conversiones
-    variant_names = [v['name'] for v in variants]
-    conversion_rates = [(v['x'] / v['n']) * 100 for v in variants]
-    
-    fig = go.Figure()
-    
-    # Colores diferentes para cada variante
-    colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FECA57', '#FF9FF3', '#54A0FF']
-    
-    fig.add_trace(go.Bar(
-        x=variant_names,
-        y=conversion_rates,
-        marker_color=colors[:len(variants)],
-        text=[f'{rate:.2f}%' for rate in conversion_rates],
-        textposition='auto',
-    ))
-    
-    fig.update_layout(
-        title=f'Tasas de Conversión - {metric_name}',
-        xaxis_title='Variantes',
-        yaxis_title='Tasa de Conversión (%)',
-        plot_bgcolor='rgba(0,0,0,0)',
-        paper_bgcolor='rgba(0,0,0,0)',
-        font=dict(color='white')
-    )
-    
-    return fig
-
-def create_all_comparisons_section(metric_name, all_comparisons):
-    """Create section showing all possible pairwise comparisons."""
-    # Separar comparaciones vs control de comparaciones entre variantes
-    control_comparisons = [comp for comp in all_comparisons if comp['is_control_comparison']]
-    variant_comparisons = [comp for comp in all_comparisons if not comp['is_control_comparison']]
-    
-    # Mostrar comparaciones vs control
-    if control_comparisons:
-        st.markdown(f"### 📊 Comparaciones vs Control")
-        create_comparison_cards(control_comparisons, is_control_section=True)
-    
-    # Mostrar comparaciones entre variantes
-    if variant_comparisons:
-        st.markdown(f"### 🔄 Comparaciones entre Variantes")
-        create_comparison_cards(variant_comparisons, is_control_section=False)
-
-def create_comparison_cards(comparisons, is_control_section=True):
-    """Create comparison cards with improved styling."""
-    for comparison in comparisons:
-        # Determinar colores y títulos según el tipo de comparación
-        if is_control_section:
-            card_color = "#4A6489"
-            icon = "📈"
-        else:
-            card_color = "#5A7099"
-            icon = "⚖️"
-        
-        st.markdown(f"""
-            <div class="multivariant-card" style="background: {card_color}; padding: 15px; margin: 10px 0;">
-                <div style="display: flex; align-items: center; margin-bottom: 15px;">
-                    <span style="font-size: 1.2em; margin-right: 10px;">{icon}</span>
-                    <h4 style="margin: 0;">{comparison['variant_a_name']} vs {comparison['variant_b_name']}</h4>
-                </div>
-                <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px;">
-                    <div>
-                        <div style="font-size: 0.9rem; opacity: 0.8; margin-bottom: 5px;">{comparison['variant_a_name']}</div>
-                        <div class="metric-box">{comparison['variant_a_p']*100:.2f}%</div>
-                    </div>
-                    <div>
-                        <div style="font-size: 0.9rem; opacity: 0.8; margin-bottom: 5px;">{comparison['variant_b_name']}</div>
-                        <div class="metric-box">{comparison['variant_b_p']*100:.2f}%</div>
-                    </div>
-                    <div>
-                        <div style="font-size: 0.9rem; opacity: 0.8; margin-bottom: 5px;">Lift Relativo</div>
-                        <div class="metric-box" style="background: {'#E8F5E8' if comparison['relative_lift'] > 0 else '#FFE8E8'}; color: {'#2E7D32' if comparison['relative_lift'] > 0 else '#C62828'};">
-                            {'+' if comparison['relative_lift'] > 0 else ''}{comparison['relative_lift']:.2f}%
-                        </div>
-                    </div>
-                    <div>
-                        <div style="font-size: 0.9rem; opacity: 0.8; margin-bottom: 5px;">P2BB</div>
-                        <div class="metric-box" style="background: {'#E3F2FD' if comparison['p2bb'] > 0.5 else '#FFF3E0'}; color: {'#1565C0' if comparison['p2bb'] > 0.5 else '#E65100'};">
-                            {comparison['p2bb']*100:.1f}%
-                        </div>
-                    </div>
-                </div>
-                <div style="margin-top: 15px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.2);">
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <div>
-                            <strong>P-value:</strong> {comparison['p_value']:.4f}
-                        </div>
-                        <div style="padding: 5px 15px; border-radius: 20px; background: {'#2E7D32' if comparison['significant'] else '#C62828'}; color: white; font-size: 0.9em;">
-                            {'✓ Significativo' if comparison['significant'] else '✗ No significativo'}
-                        </div>
-                    </div>
-                </div>
-            </div>
-        """, unsafe_allow_html=True)
-
 def create_comparison_matrix(metric_name, variants):
     """Create an interactive matrix showing all pairwise comparison results with hover tooltips."""
     st.markdown(f"### 📋 Matriz de Comparaciones - {metric_name}")
@@ -830,6 +752,179 @@ def create_comparison_matrix(metric_name, variants):
     </div>
     """, unsafe_allow_html=True)
 
+def create_all_comparisons_section(metric_name, all_comparisons):
+    """Create section showing all possible pairwise comparisons."""
+    # Separar comparaciones vs control de comparaciones entre variantes
+    control_comparisons = [comp for comp in all_comparisons if comp['is_control_comparison']]
+    variant_comparisons = [comp for comp in all_comparisons if not comp['is_control_comparison']]
+    
+    # Mostrar comparaciones vs control
+    if control_comparisons:
+        st.markdown(f"### 📊 Comparaciones vs Control")
+        create_comparison_cards(control_comparisons, is_control_section=True)
+    
+    # Mostrar comparaciones entre variantes
+    if variant_comparisons:
+        st.markdown(f"### 🔄 Comparaciones entre Variantes")
+        create_comparison_cards(variant_comparisons, is_control_section=False)
+
+def create_comparison_cards(comparisons, is_control_section=True):
+    """Create comparison cards with improved styling and visible p-values."""
+    for comparison in comparisons:
+        # Determinar colores y títulos según el tipo de comparación
+        if is_control_section:
+            card_color = "#4A6489"
+            icon = "📈"
+        else:
+            card_color = "#5A7099"
+            icon = "⚖️"
+        
+        st.markdown(f"""
+            <div class="multivariant-card" style="background: {card_color}; padding: 15px; margin: 10px 0;">
+                <div style="display: flex; align-items: center; margin-bottom: 15px;">
+                    <span style="font-size: 1.2em; margin-right: 10px;">{icon}</span>
+                    <h4 style="margin: 0;">{comparison['variant_a_name']} vs {comparison['variant_b_name']}</h4>
+                </div>
+                <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 15px;">
+                    <div>
+                        <div style="font-size: 0.9rem; opacity: 0.8; margin-bottom: 5px;">{comparison['variant_a_name']}</div>
+                        <div class="metric-box">{comparison['variant_a_p']*100:.2f}%</div>
+                    </div>
+                    <div>
+                        <div style="font-size: 0.9rem; opacity: 0.8; margin-bottom: 5px;">{comparison['variant_b_name']}</div>
+                        <div class="metric-box">{comparison['variant_b_p']*100:.2f}%</div>
+                    </div>
+                    <div>
+                        <div style="font-size: 0.9rem; opacity: 0.8; margin-bottom: 5px;">Lift Relativo</div>
+                        <div class="metric-box" style="background: {'#E8F5E8' if comparison['relative_lift'] > 0 else '#FFE8E8'}; color: {'#2E7D32' if comparison['relative_lift'] > 0 else '#C62828'};">
+                            {'+' if comparison['relative_lift'] > 0 else ''}{comparison['relative_lift']:.2f}%
+                        </div>
+                    </div>
+                    <div>
+                        <div style="font-size: 0.9rem; opacity: 0.8; margin-bottom: 5px;">P-value</div>
+                        <div class="metric-box" style="background: {'#E8F5E8' if comparison['significant'] else '#FFE8E8'}; color: {'#2E7D32' if comparison['significant'] else '#C62828'};">
+                            {comparison['p_value']:.4f}
+                        </div>
+                    </div>
+                    <div>
+                        <div style="font-size: 0.9rem; opacity: 0.8; margin-bottom: 5px;">P2BB</div>
+                        <div class="metric-box" style="background: {'#E3F2FD' if comparison['p2bb'] > 0.5 else '#FFF3E0'}; color: {'#1565C0' if comparison['p2bb'] > 0.5 else '#E65100'};">
+                            {comparison['p2bb']*100:.1f}%
+                        </div>
+                    </div>
+                </div>
+                <div style="margin-top: 15px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.2);">
+                    <div style="text-align: center;">
+                        <div style="padding: 8px 20px; border-radius: 20px; background: {'#2E7D32' if comparison['significant'] else '#C62828'}; color: white; font-size: 0.9em; display: inline-block;">
+                            {'✓ Significativo' if comparison['significant'] else '✗ No significativo'} (α = 0.05)
+                        </div>
+                    </div>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
+
+def create_visualization(metric_name, variants):
+    """Create visualization for multivariant test."""
+    # Crear gráfico de barras con conversiones
+    variant_names = [v['name'] for v in variants]
+    conversion_rates = [(v['x'] / v['n']) * 100 for v in variants]
+    
+    fig = go.Figure()
+    
+    # Colores diferentes para cada variante
+    colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FECA57', '#FF9FF3', '#54A0FF']
+    
+    fig.add_trace(go.Bar(
+        x=variant_names,
+        y=conversion_rates,
+        marker_color=colors[:len(variants)],
+        text=[f'{rate:.2f}%' for rate in conversion_rates],
+        textposition='auto',
+    ))
+    
+    fig.update_layout(
+        title=f'Tasas de Conversión - {metric_name}',
+        xaxis_title='Variantes',
+        yaxis_title='Tasa de Conversión (%)',
+        plot_bgcolor='rgba(0,0,0,0)',
+        paper_bgcolor='rgba(0,0,0,0)',
+        font=dict(color='white')
+    )
+    
+    return fig
+
+def convert_metrics_to_text(metrics):
+    """Convert metrics data back to text format for sharing."""
+    text_lines = []
+    for metric_name, data in metrics.items():
+        text_lines.append(metric_name)
+        for variant in data['variants']:
+            text_lines.append(f"{variant['name']} {variant['n']} {variant['x']}")
+        text_lines.append("")  # Empty line between metrics
+    return "\n".join(text_lines)
+
+def create_share_url_section(metrics):
+    """Create section for sharing URL with current data."""
+    if metrics:
+        st.markdown("### 🔗 Compartir Análisis")
+        
+        # Generar URL compartible
+        share_url = generate_share_url(metrics)
+        
+        if share_url:
+            st.markdown("""
+            <div class="share-url-box">
+                <h4 style="color: white; margin-top: 0;">URL para Compartir</h4>
+                <p style="color: #E0E0E0; margin-bottom: 15px;">
+                    Copia esta URL para compartir tu análisis con otros. Los datos se cargarán automáticamente.
+                </p>
+            """, unsafe_allow_html=True)
+            
+            # Mostrar URL en un input copiable
+            st.text_input(
+                "URL compartible:",
+                value=share_url,
+                help="Copia esta URL para compartir tu análisis"
+            )
+            
+            # Botón para copiar al portapapeles (JavaScript)
+            st.markdown(f"""
+                <button onclick="navigator.clipboard.writeText('{share_url}').then(function() {{
+                    alert('URL copiada al portapapeles!');
+                }}, function(err) {{
+                    console.error('Error al copiar: ', err);
+                }});" 
+                style="background-color: #3CCFE7; color: #1B365D; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: bold;">
+                    📋 Copiar URL
+                </button>
+            """, unsafe_allow_html=True)
+            
+            st.markdown("</div>", unsafe_allow_html=True)
+        else:
+            st.warning("No se pudo generar la URL para compartir. Los datos pueden ser demasiado grandes.")
+
+def load_data_from_url():
+    """Load data from URL parameter if present."""
+    try:
+        # Usar la nueva API de query params
+        if 'data' in st.query_params:
+            encoded_data = st.query_params['data']
+            
+            decoded_data = decode_data_from_url(encoded_data)
+            
+            if decoded_data:
+                # Convert back to text format
+                loaded_text = convert_metrics_to_text(decoded_data)
+                return loaded_text, decoded_data
+            else:
+                # Solo mostrar error si hay problema real
+                st.error("❌ No se pudo decodificar los datos de la URL")
+    except Exception as e:
+        # Mostrar error en caso de falla
+        st.error(f"❌ Error cargando datos de URL: {str(e)}")
+    
+    return None, None
+
 def main():
     st.markdown("""
         <style>
@@ -867,6 +962,12 @@ def main():
         </style>
     """, unsafe_allow_html=True)
 
+    # Intentar cargar datos de URL
+    loaded_text, loaded_metrics = load_data_from_url()
+    
+    if loaded_text:
+        st.success("✅ Datos cargados desde URL compartida y analizados automáticamente!")
+
     # Crear dos columnas principales
     col_input, col_output = st.columns([1, 1])
 
@@ -888,18 +989,24 @@ Treatment-1 2000 220
 Treatment-2 2000 180
 Treatment-3 2000 250""")
         
-        # Área de texto para input
+        # Área de texto para input (usar datos cargados si existen)
+        default_data = loaded_text if loaded_text else ""
         data = st.text_area(
             "Ingresa los datos en el siguiente formato: [Nombre de la Métrica] seguido de las líneas con [Nombre Variante] [sesiones] [conversiones]. La primera variante será considerada como control.",
-            height=250
+            height=250,
+            value=default_data
         )
         
-        if st.button("Analizar", type="primary"):
+        # Cambiar texto del botón si hay datos cargados desde URL
+        button_text = "Re-analizar" if loaded_text else "Analizar"
+        
+        if st.button(button_text, type="primary"):
             if data:
                 try:
                     metrics = parse_metrics_data(data)
                     st.session_state.metrics = metrics
                     st.session_state.show_results = True
+                    st.session_state.auto_loaded = False  # Marcar como análisis manual
                 except Exception as e:
                     st.error(f"Error al procesar los datos: {str(e)}")
             else:
@@ -907,8 +1014,17 @@ Treatment-3 2000 250""")
 
     # Columna de output (derecha)
     with col_output:
+        # Auto-cargar y auto-analizar si hay datos de URL
+        if loaded_metrics:
+            st.session_state.metrics = loaded_metrics
+            st.session_state.show_results = True
+            st.session_state.auto_loaded = True
+
         if 'show_results' in st.session_state and st.session_state.show_results:
             metrics = st.session_state.metrics
+            
+            # Sección para compartir URL
+            create_share_url_section(metrics)
             
             for metric_name, data in metrics.items():
                 # Verificar si tiene la estructura de variantes nueva o la legacy
@@ -945,4 +1061,4 @@ Treatment-3 2000 250""")
 if __name__ == "__main__":
     if 'show_results' not in st.session_state:
         st.session_state.show_results = False
-    main()
+    main() 
