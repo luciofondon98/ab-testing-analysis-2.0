@@ -218,28 +218,43 @@ def parse_metrics_data(text):
     """Parse multiple metrics data from text input supporting both legacy and N variants."""
     metrics_data = {}
     current_metric = None
+    experiment_title = None
     
     for line in text.strip().split('\n'):
         # Si la línea está vacía, continuar
         if not line.strip():
+            continue
+        
+        # Detectar título del experimento (líneas que empiezan con EXP-)
+        if line.strip().startswith('EXP-'):
+            experiment_title = line.strip()
             continue
             
         # Dividir por tabulaciones si hay, si no, buscar el último espacio antes de los números
         if '\t' in line:
             parts = line.split('\t')
         else:
-            # Encontrar la posición del primer número
+            # Mejorar la detección de números: buscar los últimos 2 números
             line_parts = line.strip().split()
-            for i, part in enumerate(line_parts):
-                if part.replace('.', '').replace(',', '').isdigit():
-                    # Unir todo lo anterior como el nombre
-                    name = ' '.join(line_parts[:i])
-                    # Y tomar los números como el resto
-                    numbers = line_parts[i:]
-                    parts = [name] + numbers
+            
+            # Buscar desde el final para encontrar los últimos 2 números
+            numbers_found = []
+            name_parts = []
+            
+            # Revisar desde el final hacia atrás
+            for i in range(len(line_parts) - 1, -1, -1):
+                part = line_parts[i].replace(',', '')
+                if part.isdigit() and len(numbers_found) < 2:
+                    numbers_found.insert(0, part)
+                else:
+                    name_parts = line_parts[:i+1]
                     break
+            
+            if len(numbers_found) >= 2:
+                name = ' '.join(name_parts)
+                parts = [name] + numbers_found
             else:
-                # Si no hay números, es un nombre de métrica
+                # Si no hay al menos 2 números, es un nombre de métrica
                 current_metric = line.strip()
                 metrics_data[current_metric] = {'variants': []}
                 continue
@@ -277,7 +292,14 @@ def parse_metrics_data(text):
             data['baseline'] = data['variants'][0]
             data['treatment'] = data['variants'][1]
             
-    return metrics_data
+    # Agregar título del experimento si existe
+    if experiment_title:
+        return {
+            'experiment_title': experiment_title,
+            'metrics': metrics_data
+        }
+    else:
+        return metrics_data
 
 def calculate_ab_test(control_n, control_x, treatment_n, treatment_x):
     """Calculate A/B test statistics for legacy support."""
@@ -433,13 +455,13 @@ def get_smart_label(name):
         numbers = ''.join([c for c in name if c.isdigit()])
         return (initials + numbers)[:4]
 
-def create_metric_card(metric_name, data, results):
+def create_metric_card(metric_name, data, results, experiment_title=None):
     """Create a styled card for a metric (legacy format)."""
     st.markdown("""
         <style>
         .metric-card {
             width: 600px;
-            height: 260px;
+            height: 320px;
             background: #4A6489;
             box-shadow: 0px 4px 4px rgba(0, 0, 0, 0.25);
             border-radius: 12px;
@@ -479,8 +501,8 @@ def create_metric_card(metric_name, data, results):
             font-family: 'Clan OT', sans-serif;
             font-style: normal;
             font-weight: 900;
-            font-size: 20px;
-            line-height: 24px;
+            font-size: 18px;
+            line-height: 22px;
             color: #1B365D;
             display: flex;
             align-items: center;
@@ -490,7 +512,8 @@ def create_metric_card(metric_name, data, results):
             grid-template-columns: repeat(4, 1fr);
             padding: 0 20px;
             gap: 20px;
-            height: 120px;
+            height: 100px;
+            margin-top: 10px;
         }
         .metric-section {
             display: flex;
@@ -618,16 +641,30 @@ def create_metric_card(metric_name, data, results):
         }
         .significance-label {
             position: absolute;
-            bottom: 15px;
+            bottom: 12px;
             left: 50%;
             transform: translateX(-50%);
-            padding: 8px 20px;
+            padding: 6px 16px;
             border-radius: 20px;
             font-family: 'Clan OT', sans-serif;
             font-weight: 700;
-            font-size: 14px;
+            font-size: 13px;
             color: white;
             text-align: center;
+        }
+        .experiment-title-small {
+            background: #3CCFE7;
+            color: #1B365D;
+            padding: 4px 8px;
+            border-radius: 6px;
+            font-family: 'Clan OT', sans-serif;
+            font-weight: 700;
+            font-size: 10px;
+            text-align: center;
+            margin: 8px 20px 3px 20px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
         }
         </style>
     """, unsafe_allow_html=True)
@@ -641,12 +678,35 @@ def create_metric_card(metric_name, data, results):
     significance_text = "✓ Significativo" if is_significant else "✗ No significativo"
     significance_color = "#2E7D32" if is_significant else "#C62828"
     
+    # Construir HTML con título del experimento y KPI si están disponibles
+    experiment_title_html = ""
+    if experiment_title:
+        experiment_title_html = f'<div class="experiment-title-small">🧪 {experiment_title}</div>'
+    
+    # Extraer el KPI del metric_name si está en formato [KPI]
+    kpi_name = ""
+    comparison_text = metric_name
+    if metric_name.startswith('[') and ']' in metric_name:
+        # Es un KPI con formato [Nombre del KPI]
+        end_bracket = metric_name.find(']')
+        kpi_name = metric_name[1:end_bracket]  # Extraer el KPI sin los corchetes
+        if len(metric_name) > end_bracket + 1:
+            comparison_text = metric_name[end_bracket + 1:].strip()
+        else:
+            comparison_text = ""
+    
+    # Si no hay texto de comparación específico, usar el metric_name completo
+    if not comparison_text:
+        comparison_text = metric_name
+    
     st.markdown(f"""
         <div class="metric-card">
+            {experiment_title_html}
             <div class="metric-header">
                 <span class="metric-header-emoji">🎯</span>
-                <span class="metric-header-text">{metric_name}</span>
+                <span class="metric-header-text">{comparison_text}</span>
             </div>
+            {'<div style="text-align: center; margin: -8px 0 5px 0; color: #3CCFE7; font-weight: bold; font-size: 12px;">📊 ' + kpi_name + '</div>' if kpi_name else ''}
             <div class="metric-content">
                 <div class="metric-section">
                     <div class="metric-label">Conversion</div>
@@ -691,11 +751,10 @@ def create_metric_card(metric_name, data, results):
             </div>
             <div class="significance-label" style="background: {significance_color};">
                 {significance_text} (α = 0.05)
-            </div>
         </div>
+            </div>
     """, unsafe_allow_html=True)
-
-
+    
 
 def create_comparison_matrix(metric_name, variants):
     """Create an interactive matrix showing all pairwise comparison results with hover tooltips."""
@@ -729,15 +788,13 @@ def create_comparison_matrix(metric_name, variants):
                 comparison = calculate_single_comparison(variant_a, variant_b)
                 
                 # Texto del tooltip
-                hover_text = f"""
-{variant_a['name']} vs {variant_b['name']}<br>
+                hover_text = f"""{variant_a['name']} vs {variant_b['name']}<br>
 • {variant_a['name']}: {comparison['variant_a_p']*100:.2f}% ({variant_a['x']:,}/{variant_a['n']:,})<br>
 • {variant_b['name']}: {comparison['variant_b_p']*100:.2f}% ({variant_b['x']:,}/{variant_b['n']:,})<br>
 • Lift: {'+' if comparison['relative_lift'] > 0 else ''}{comparison['relative_lift']:.2f}%<br>
 • P-value: {comparison['p_value']:.4f}<br>
 • P2BB: {comparison['p2bb']*100:.1f}%<br>
-• Significativo: {'Sí' if comparison['significant'] else 'No'}
-                """.strip()
+• Significativo: {'Sí' if comparison['significant'] else 'No'}"""
                 
                 hover_row.append(hover_text)
                 
@@ -936,7 +993,16 @@ def create_visualization(metric_name, variants):
 def convert_metrics_to_text(metrics):
     """Convert metrics data back to text format for sharing."""
     text_lines = []
-    for metric_name, data in metrics.items():
+    
+    # Si hay título de experimento, agregarlo primero
+    if isinstance(metrics, dict) and 'experiment_title' in metrics:
+        text_lines.append(metrics['experiment_title'])
+        text_lines.append("")  # Línea vacía después del título
+        metrics_data = metrics['metrics']
+    else:
+        metrics_data = metrics
+    
+    for metric_name, data in metrics_data.items():
         text_lines.append(metric_name)
         for variant in data['variants']:
             text_lines.append(f"{variant['name']} {variant['n']} {variant['x']}")
@@ -1074,17 +1140,19 @@ def main():
         st.subheader("📝 Datos de Entrada")
         
         with st.expander("Ver ejemplo de formato", expanded=False):
-            st.code("""NSR Flights
-Control 1000 100
-Variant-A 1000 120
-Variant-B 1000 90
-Variant-C 1000 140
+            st.code("""EXP-240.3 - [Mobile] New Cabin bag Modal - CO
 
-Website conversion
-Baseline 2000 200
-Treatment-1 2000 220
-Treatment-2 2000 180
-Treatment-3 2000 250""")
+[Cabin bag A2C]
+Baseline 3824 42
+Variant-1 3830 55
+Variant-2 3835 46
+Variant-3 3816 46
+
+[NSR Baggage]
+Baseline 3824 1405
+Variant-1 3830 1417
+Variant-2 3835 1350
+Variant-3 3816 1344""")
         
         # Área de texto para input (usar datos cargados si existen)
         default_data = loaded_text if loaded_text else ""
@@ -1092,15 +1160,17 @@ Treatment-3 2000 250""")
             "Formato: [Nombre Métrica] → [Nombre Variante] [sesiones] [conversiones]",
             height=300,
             value=default_data,
-            placeholder="""NSR Flights
-Control 1000 100
-Variant-A 1000 120
-Variant-B 1000 90
-Variant-C 1000 140
+            placeholder="""EXP-240.3 - [Mobile] New Cabin bag Modal - CO
 
-Website conversion
-Baseline 2000 200
-Treatment-1 2000 220"""
+[Cabin bag A2C]
+Baseline 3824 42
+Variant-1 3830 55
+Variant-2 3835 46
+
+[NSR Baggage]
+Baseline 3824 1405
+Variant-1 3830 1417
+Variant-2 3835 1350"""
         )
         
         # Cambiar texto del botón si hay datos cargados desde URL
@@ -1109,8 +1179,8 @@ Treatment-1 2000 220"""
         if st.button(button_text, type="primary"):
             if data:
                 try:
-                    metrics = parse_metrics_data(data)
-                    st.session_state.metrics = metrics
+                    parsed_data = parse_metrics_data(data)
+                    st.session_state.metrics = parsed_data
                     st.session_state.show_results = True
                     st.session_state.auto_loaded = False  # Marcar como análisis manual
                 except Exception as e:
@@ -1121,9 +1191,9 @@ Treatment-1 2000 220"""
     # Columna derecha - Compartir (solo si hay resultados)
     with col_input_right:
         if 'show_results' in st.session_state and st.session_state.show_results:
-            metrics = st.session_state.metrics
+            stored_data = st.session_state.metrics
             # Sección para compartir URL
-            create_share_url_section(metrics)
+            create_share_url_section(stored_data)
 
     # Auto-cargar y auto-analizar si hay datos de URL
     if loaded_metrics:
@@ -1134,9 +1204,31 @@ Treatment-1 2000 220"""
     # Sección de resultados - ancho completo
     if 'show_results' in st.session_state and st.session_state.show_results:
         st.markdown("---")
-        st.header("📊 Resultados del Análisis")
         
-        metrics = st.session_state.metrics
+        stored_data = st.session_state.metrics
+        
+        # Verificar si hay título de experimento
+        if isinstance(stored_data, dict) and 'experiment_title' in stored_data:
+            experiment_title = stored_data['experiment_title']
+            metrics = stored_data['metrics']
+            
+            # Mostrar título del experimento en una caja destacada
+            st.markdown(f"""
+            <div style="background: linear-gradient(90deg, #1B365D 0%, #4A6489 100%); 
+                        border: 2px solid #3CCFE7; 
+                        border-radius: 12px; 
+                        padding: 20px; 
+                        margin: 20px 0; 
+                        text-align: center;">
+                <h2 style="color: white; margin: 0; font-size: 1.5em;">
+                    🧪 {experiment_title}
+                </h2>
+            </div>
+            """, unsafe_allow_html=True)
+            st.markdown("### 📊 Resultados del Análisis")
+        else:
+            metrics = stored_data
+            st.header("📊 Resultados del Análisis")
         
         # Procesar cada métrica
         for metric_name, data in metrics.items():
@@ -1157,7 +1249,9 @@ Treatment-1 2000 220"""
                     # Mostrar en dos columnas: card + gráfico
                     col_card, col_chart = st.columns([1, 1])
                     with col_card:
-                        create_metric_card(metric_name, data, results)
+                        # Para A/B tests de 2 variantes, pasar también el título del experimento
+                        experiment_title = stored_data.get('experiment_title') if isinstance(stored_data, dict) else None
+                        create_metric_card(metric_name, data, results, experiment_title)
                     
                 else:
                     # Análisis multivariante - Usar exactamente el mismo diseño que A/B
@@ -1179,8 +1273,12 @@ Treatment-1 2000 220"""
                         )
                         
                         # Usar la función original create_metric_card
-                        comparison_name = f"{control['name']} vs {treatment['name']}"
-                        create_metric_card(comparison_name, comparison_data, results)
+                        # Para multivariante, combinar KPI + comparación
+                        comparison_name = f"{metric_name} - {control['name']} vs {treatment['name']}"
+                        
+                        # Pasar el título del experimento si existe
+                        experiment_title = stored_data.get('experiment_title') if isinstance(stored_data, dict) else None
+                        create_metric_card(comparison_name, comparison_data, results, experiment_title)
                     
                     # Sección 2: Comparaciones entre Variantes
                     if len(variants) > 2:  # Solo si hay más de 2 variantes en total
@@ -1207,8 +1305,12 @@ Treatment-1 2000 220"""
                                 )
                                 
                                 # Usar la función original create_metric_card
-                                comparison_name = f"{variant_a['name']} vs {variant_b['name']}"
-                                create_metric_card(comparison_name, comparison_data, results)
+                                # Para comparaciones entre variantes, también incluir el KPI
+                                comparison_name = f"{metric_name} - {variant_a['name']} vs {variant_b['name']}"
+                                
+                                # Pasar el título del experimento si existe
+                                experiment_title = stored_data.get('experiment_title') if isinstance(stored_data, dict) else None
+                                create_metric_card(comparison_name, comparison_data, results, experiment_title)
                     
                     # Test Chi-cuadrado como información adicional
                     chi_square_result = calculate_chi_square_test(variants)
@@ -1242,4 +1344,4 @@ Treatment-1 2000 220"""
 if __name__ == "__main__":
     if 'show_results' not in st.session_state:
         st.session_state.show_results = False
-    main() 
+    main()
