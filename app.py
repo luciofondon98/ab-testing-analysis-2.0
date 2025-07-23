@@ -411,7 +411,7 @@ def create_metric_card(metric_name, data, results):
         <style>
         .metric-card {
             width: 600px;
-            height: 220px;
+            height: 260px;
             background: #4A6489;
             box-shadow: 0px 4px 4px rgba(0, 0, 0, 0.25);
             border-radius: 12px;
@@ -584,12 +584,30 @@ def create_metric_card(metric_name, data, results):
             text-align: center;
             z-index: 1;
         }
+        .significance-label {
+            position: absolute;
+            bottom: 15px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 8px 20px;
+            border-radius: 20px;
+            font-family: 'Clan OT', sans-serif;
+            font-weight: 700;
+            font-size: 14px;
+            color: white;
+            text-align: center;
+        }
         </style>
     """, unsafe_allow_html=True)
 
     # Determinar los porcentajes y redondearlos
     v1_percentage = round(results['p2bb'] * 100)
     og_percentage = round((1 - results['p2bb']) * 100)
+    
+    # Determinar si es significativo
+    is_significant = results['p_value'] < 0.05
+    significance_text = "✓ Significativo" if is_significant else "✗ No significativo"
+    significance_color = "#2E7D32" if is_significant else "#C62828"
     
     st.markdown(f"""
         <div class="metric-card">
@@ -638,6 +656,9 @@ def create_metric_card(metric_name, data, results):
                     <div class="metric-label">P-value</div>
                     <div class="metric-value">{results['p_value']:.3f}</div>
                 </div>
+            </div>
+            <div class="significance-label" style="background: {significance_color};">
+                {significance_text} (α = 0.05)
             </div>
         </div>
     """, unsafe_allow_html=True)
