@@ -405,6 +405,34 @@ def calculate_single_comparison(variant_a, variant_b, is_control_comparison=Fals
         'is_control_comparison': is_control_comparison
     }
 
+def get_smart_label(name):
+    """Generate smart, differentiated labels for variant names."""
+    # Si el nombre es corto (≤4 chars), usarlo completo
+    if len(name) <= 4:
+        return name
+    
+    # Para nombres como "Variant-A", "Variant-B", tomar la parte después del guión
+    if '-' in name:
+        parts = name.split('-')
+        if len(parts) >= 2 and parts[-1]:  # Si hay algo después del último guión
+            return parts[-1][:4]  # Tomar hasta 4 chars de la parte final
+    
+    # Para nombres como "Control", "Baseline", "Treatment-1", etc.
+    # Usar las primeras letras de cada palabra + números si los hay
+    words = name.replace('-', ' ').replace('_', ' ').split()
+    
+    if len(words) == 1:
+        # Una sola palabra: tomar primeras letras + números
+        word = words[0]
+        letters = ''.join([c for c in word if c.isalpha()])[:3]
+        numbers = ''.join([c for c in word if c.isdigit()])
+        return (letters + numbers)[:4]
+    else:
+        # Múltiples palabras: primera letra de cada palabra + números
+        initials = ''.join([word[0] for word in words if word and word[0].isalpha()])
+        numbers = ''.join([c for c in name if c.isdigit()])
+        return (initials + numbers)[:4]
+
 def create_metric_card(metric_name, data, results):
     """Create a styled card for a metric (legacy format)."""
     st.markdown("""
@@ -493,10 +521,14 @@ def create_metric_card(metric_name, data, results):
             font-family: 'Clan OT', sans-serif;
             font-style: normal;
             font-weight: 700;
-            font-size: 16px;
-            line-height: 20px;
+            font-size: 14px;
+            line-height: 18px;
             color: #FFFFFF;
-            width: 30px;
+            width: 40px;
+            text-align: center;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
         }
         .metric-value {
             box-sizing: border-box;
@@ -620,11 +652,11 @@ def create_metric_card(metric_name, data, results):
                     <div class="metric-label">Conversion</div>
                     <div class="conversion-container">
                         <div class="conversion-row">
-                            <span class="conversion-label">OG</span>
+                            <span class="conversion-label" title="{data['baseline']['name']}">{get_smart_label(data['baseline']['name'])}</span>
                             <div class="metric-value">{results['control_p']*100:.1f}%</div>
                         </div>
                         <div class="conversion-row">
-                            <span class="conversion-label">V1</span>
+                            <span class="conversion-label" title="{data['treatment']['name']}">{get_smart_label(data['treatment']['name'])}</span>
                             <div class="metric-value">{results['treatment_p']*100:.1f}%</div>
                         </div>
                     </div>
