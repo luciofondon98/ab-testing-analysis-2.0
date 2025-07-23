@@ -642,35 +642,7 @@ def create_metric_card(metric_name, data, results):
         </div>
     """, unsafe_allow_html=True)
 
-def create_multivariant_summary_card(metric_name, variants, chi_square_result):
-    """Create a summary card for multivariant test."""
-    
-    st.markdown(f"""
-        <div class="multivariant-card">
-            <h3>🎯 {metric_name} - Resumen General</h3>
-            <div style="margin: 20px 0;">
-                <strong>Test Chi-cuadrado:</strong> 
-                <span style="color: {'#69BE28' if chi_square_result['significant'] else '#FF6B6B'}">
-                    {'Significativo' if chi_square_result['significant'] else 'No significativo'}
-                </span>
-                (p-value: {chi_square_result['p_value']:.4f})
-            </div>
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px;">
-    """, unsafe_allow_html=True)
-    
-    for variant in variants:
-        conversion_rate = (variant['x'] / variant['n']) * 100
-        st.markdown(f"""
-            <div class="variant-row">
-                <div class="variant-name">{variant['name']}</div>
-                <div class="variant-metric">
-                    <div class="metric-box">{conversion_rate:.2f}%</div>
-                    <div class="metric-box">{variant['x']:,}/{variant['n']:,}</div>
-                </div>
-            </div>
-        """, unsafe_allow_html=True)
-    
-    st.markdown("</div></div>", unsafe_allow_html=True)
+
 
 def create_comparison_matrix(metric_name, variants):
     """Create an interactive matrix showing all pairwise comparison results with hover tooltips."""
@@ -1135,24 +1107,80 @@ Treatment-1 2000 220"""
                         create_metric_card(metric_name, data, results)
                     
                 else:
-                    # Análisis multivariante - Layout mejorado
+                    # Análisis multivariante - Usar exactamente el mismo diseño que A/B
+                    control = variants[0]  # Primera variante es el control
+                    
+                    # Sección 1: Comparaciones vs Control
+                    st.markdown("### 📊 Comparaciones vs Control")
+                    for i, treatment in enumerate(variants[1:], 1):
+                        # Crear estructura de datos compatible con create_metric_card
+                        comparison_data = {
+                            'baseline': control,
+                            'treatment': treatment
+                        }
+                        
+                        # Calcular estadísticas para esta comparación específica
+                        results = calculate_ab_test(
+                            control['n'], control['x'],
+                            treatment['n'], treatment['x']
+                        )
+                        
+                        # Usar la función original create_metric_card
+                        comparison_name = f"{control['name']} vs {treatment['name']}"
+                        create_metric_card(comparison_name, comparison_data, results)
+                    
+                    # Sección 2: Comparaciones entre Variantes
+                    if len(variants) > 2:  # Solo si hay más de 2 variantes en total
+                        st.markdown("### 🔄 Comparaciones entre Variantes")
+                        
+                        # Generar todas las comparaciones entre variantes (excluyendo vs control)
+                        treatment_variants = variants[1:]  # Todas menos el control
+                        
+                        for i in range(len(treatment_variants)):
+                            for j in range(i + 1, len(treatment_variants)):
+                                variant_a = treatment_variants[i]
+                                variant_b = treatment_variants[j]
+                                
+                                # Crear estructura de datos compatible con create_metric_card
+                                comparison_data = {
+                                    'baseline': variant_a,
+                                    'treatment': variant_b
+                                }
+                                
+                                # Calcular estadísticas para esta comparación específica
+                                results = calculate_ab_test(
+                                    variant_a['n'], variant_a['x'],
+                                    variant_b['n'], variant_b['x']
+                                )
+                                
+                                # Usar la función original create_metric_card
+                                comparison_name = f"{variant_a['name']} vs {variant_b['name']}"
+                                create_metric_card(comparison_name, comparison_data, results)
+                    
+                    # Test Chi-cuadrado como información adicional
                     chi_square_result = calculate_chi_square_test(variants)
+                    with st.expander("📊 Test Chi-cuadrado General", expanded=False):
+                        st.markdown(f"""
+                        **Test Chi-cuadrado:** {'Significativo' if chi_square_result['significant'] else 'No significativo'} 
+                        (p-value: {chi_square_result['p_value']:.4f})
+                        
+                        Este test evalúa si existe una diferencia significativa entre **todas** las variantes de forma global.
+                        """)
                     
-                    # Resumen general en la parte superior
-                    create_multivariant_summary_card(metric_name, variants, chi_square_result)
-                    
-                    # Dos columnas para matriz y gráfico
-                    col_matrix, col_chart = st.columns([1, 1])
-                    
-                    with col_matrix:
-                        create_comparison_matrix(metric_name, variants)
-                    
-                    with col_chart:
-                        fig = create_visualization(metric_name, variants)
-                        st.plotly_chart(fig, use_container_width=True)
-                    
-                    # Comparaciones detalladas en ancho completo (colapsadas por defecto)
-                    with st.expander(f"Ver comparaciones detalladas - {metric_name}", expanded=False):
+                    # Análisis adicional (colapsado)
+                    with st.expander("📋 Análisis Detallado", expanded=False):
+                        # Dos columnas para matriz y gráfico
+                        col_matrix, col_chart = st.columns([1, 1])
+                        
+                        with col_matrix:
+                            create_comparison_matrix(metric_name, variants)
+                        
+                        with col_chart:
+                            fig = create_visualization(metric_name, variants)
+                            st.plotly_chart(fig, use_container_width=True)
+                        
+                        # Comparaciones detalladas
+                        st.markdown("### Todas las Comparaciones Pairwise")
                         all_comparisons = calculate_all_pairwise_comparisons(variants)
                         create_all_comparisons_section(metric_name, all_comparisons)
             
