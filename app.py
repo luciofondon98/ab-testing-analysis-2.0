@@ -461,7 +461,7 @@ def create_metric_card(metric_name, data, results, experiment_title=None):
         <style>
         .metric-card {
             width: 600px;
-            height: 320px;
+            height: 350px;
             background: #4A6489;
             box-shadow: 0px 4px 4px rgba(0, 0, 0, 0.25);
             border-radius: 12px;
@@ -501,8 +501,8 @@ def create_metric_card(metric_name, data, results, experiment_title=None):
             font-family: 'Clan OT', sans-serif;
             font-style: normal;
             font-weight: 900;
-            font-size: 18px;
-            line-height: 22px;
+            font-size: 22px;
+            line-height: 26px;
             color: #1B365D;
             display: flex;
             align-items: center;
@@ -514,6 +514,7 @@ def create_metric_card(metric_name, data, results, experiment_title=None):
             gap: 20px;
             height: 100px;
             margin-top: 10px;
+            margin-bottom: 40px;
         }
         .metric-section {
             display: flex;
@@ -641,10 +642,10 @@ def create_metric_card(metric_name, data, results, experiment_title=None):
         }
         .significance-label {
             position: absolute;
-            bottom: 12px;
+            bottom: 20px;
             left: 50%;
             transform: translateX(-50%);
-            padding: 6px 16px;
+            padding: 8px 20px;
             border-radius: 20px;
             font-family: 'Clan OT', sans-serif;
             font-weight: 700;
@@ -655,13 +656,13 @@ def create_metric_card(metric_name, data, results, experiment_title=None):
         .experiment-title-small {
             background: #3CCFE7;
             color: #1B365D;
-            padding: 4px 8px;
-            border-radius: 6px;
+            padding: 6px 12px;
+            border-radius: 8px;
             font-family: 'Clan OT', sans-serif;
             font-weight: 700;
-            font-size: 10px;
+            font-size: 14px;
             text-align: center;
-            margin: 8px 20px 3px 20px;
+            margin: 8px 20px 8px 20px;
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
@@ -706,7 +707,7 @@ def create_metric_card(metric_name, data, results, experiment_title=None):
                 <span class="metric-header-emoji">🎯</span>
                 <span class="metric-header-text">{comparison_text}</span>
             </div>
-            {'<div style="text-align: center; margin: -8px 0 5px 0; color: #3CCFE7; font-weight: bold; font-size: 12px;">📊 ' + kpi_name + '</div>' if kpi_name else ''}
+            {'<div style="text-align: center; margin: -8px 0 5px 0; color: #3CCFE7; font-weight: bold; font-size: 16px;">📊 ' + kpi_name + '</div>' if kpi_name else ''}
             <div class="metric-content">
                 <div class="metric-section">
                     <div class="metric-label">Conversion</div>
